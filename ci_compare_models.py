@@ -28,20 +28,20 @@ def call_api(model_resource_url, prompt, label):
     full_text = ""
     try:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         with urllib.request.urlopen(req) as response:
-            while True:
-                line = response.readline()
-                if not line: break
-                try:
-                    line_str = line.decode("utf-8")
-                    if '"text":' in line_str:
-                        import re
-                        match = re.search(r'"text":\s*"(.*)"', line_str)
-                        if match:
-                           chunk = match.group(1).encode('utf-8').decode('unicode_escape')
-                           full_text += chunk
-                except:
-                    pass
+            full_resp = response.read().decode("utf-8")
+            try:
+                resp_list = json.loads(full_resp)
+                for item in resp_list:
+                    if "candidates" in item:
+                        for cand in item["candidates"]:
+                             if "content" in cand and "parts" in cand["content"]:
+                                 for part in cand["content"]["parts"]:
+                                     full_text += part.get("text", "")
+            except Exception as e:
+                return f"Error parsing JSON: {e}"
     except Exception as e:
         return f"Error ({label}): {e}"
     

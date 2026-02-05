@@ -1,0 +1,13 @@
+name: ⚖️ Model Comparison
+description: Compare the Base Model and Tuned Model with a specific prompt.
+title: "⚖️ Comparison: "
+labels: ["model-comparison"]
+body:
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt
+      description: The prompt to send to both models.
+      placeholder: Enter your prompt here...
+    validations:
+      required: true

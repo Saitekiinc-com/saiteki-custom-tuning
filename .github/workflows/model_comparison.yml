@@ -5,13 +5,18 @@ on:
       prompt:
         description: 'Comparison Prompt'
         required: true
-        default: '部下から「モチベーションが上がらない」と相談されました。どう対応しますか？'
+        default: '試験運用: 動作チェック'
+  issues:
+    types: [opened]
 
 jobs:
   compare:
+    # Only run if manual dispatch OR if issue has specific label
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'model-comparison')
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read
     
     steps:
       - name: Checkout code
@@ -22,21 +27,87 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Run Comparison
+      - name: Extract Prompt
+        id: extract_prompt
+        env:
+          BODY: ${{ github.event.issue.body }}
+          MANUAL_PROMPT: ${{ inputs.prompt }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PROMPT="$MANUAL_PROMPT"
+          else
+            # Use script to parse prompt from issue body
+            PROMPT=$(python3 ci_compare_models.py --mode parse --body "$BODY")
+          fi
+          
+          # Multiline output support for GITHUB_OUTPUT
+          delimiter="EOF"
+          echo "PROMPT<<$delimiter" >> $GITHUB_OUTPUT
+          echo "$PROMPT" >> $GITHUB_OUTPUT
+          echo "$delimiter" >> $GITHUB_OUTPUT
+
+      - name: Ack Issue (If Issue Triggered)
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body "🚀 比較を開始しました... 少々お待ちください。"
+
+      # 1. Base Model Check
+      - name: Run Base Model
+        id: base_model
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_REGION: ${{ secrets.GCP_REGION }}
           VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
           VERTEX_ENDPOINT_ID: ${{ secrets.VERTEX_ENDPOINT_ID }}
         run: |
-          python3 ci_compare_models.py "${{ inputs.prompt }}" > result.md
-          cat result.md
+          # Pass prompt via environment variable/file to avoid shell escaping issues with complex Japanese
+          # But for simplicity in this script, we pass as arg. Python handles quotes well.
+          PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
+          python3 ci_compare_models.py "$PROMPT" --mode base > base_result.md
 
-      - name: Post to GitHub Issue
+      - name: Post Base Result
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body-file base_result.md
+
+      # 2. Tuned Model Check
+      - name: Run Tuned Model
+        id: tuned_model
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
+          VERTEX_ENDPOINT_ID: ${{ secrets.VERTEX_ENDPOINT_ID }}
+        run: |
+          PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
+          python3 ci_compare_models.py "$PROMPT" --mode tuned > tuned_result.md
+
+      - name: Post Tuned Result
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body-file tuned_result.md
+
+      # Fallback for manual dispatch (Original behavior: post new issue)
+      - name: Post to New Issue (Manual Dispatch Only)
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PROMPT="${{ inputs.prompt }}"
+          # Combine results
+          cat base_result.md > full_result.md
+          echo -e "\n---\n" >> full_result.md
+          cat tuned_result.md >> full_result.md
+          
+          PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
           gh issue create \
             --title "⚖️ Model Comparison: ${PROMPT:0:20}..." \
-            --body-file result.md
+            --body-file full_result.md

@@ -45,38 +45,69 @@ def call_api(model_resource_url, prompt, label):
     
     return full_text
 
+import argparse
+import re
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Run specific model comparison tasks.")
+    parser.add_argument("prompt", nargs="?", help="The prompt to send to the models.")
+    parser.add_argument("--mode", choices=["parse", "base", "tuned", "simultaneous"], default="simultaneous", help="Execution mode.")
+    parser.add_argument("--body", help="Issue body content for parsing prompt.")
+    return parser.parse_args()
+
 def main():
     if not VERTEX_API_KEY:
         print("Error: VERTEX_API_KEY environment variable not set.")
         sys.exit(1)
 
-    prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PROMPT
-    
-    print(f"Prompt: {prompt}\n")
-    
+    args = parse_arguments()
+
+    # --- Mode: Parse Prompt from Issue Body ---
+    if args.mode == "parse":
+        if not args.body:
+             print("Error: --body is required for parse mode.")
+             sys.exit(1)
+        
+        # Simple parsing for Issue Form (assuming formatting or direct text)
+        # Issue Forms usually return key-value pairs or just sections.
+        # We'll just take the body as is if it's simple, or try to find the prompt section.
+        # For simplicity in this v1, assuming the user writes the prompt or the template logic works.
+        # Actually, GitHub Issue Forms (yaml) put the content in the body.
+        # If using the YAML template provided, the body will contain:
+        # ### Prompt
+        #
+        # <user input>
+        
+        content = args.body
+        match = re.search(r"### Prompt\s*\n\s*(.*)", content, re.DOTALL)
+        if match:
+            print(match.group(1).strip())
+        else:
+            # Fallback: just return the whole body if pattern not found
+            print(content.strip())
+        return
+
+    # --- Standard Execution ---
+    prompt = args.prompt
+    if not prompt:
+        print("Error: prompt argument is required for model execution modes.")
+        sys.exit(1)
+
     # 1. Base Model
-    base_url = f"https://{REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/publishers/google/models/{BASE_MODEL_ID}"
-    base_res = call_api(base_url, prompt, "Base Model")
-    
+    if args.mode in ["base", "simultaneous"]:
+        base_url = f"https://{REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/publishers/google/models/{BASE_MODEL_ID}"
+        base_res = call_api(base_url, prompt, "Base Model")
+        
+        print(f"### 🔹 Base Model ({BASE_MODEL_ID})")
+        print(base_res)
+
     # 2. Tuned Model
-    tuned_url = f"https://{REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/{VERTEX_ENDPOINT_ID}"
-    tuned_res = call_api(tuned_url, prompt, "Tuned Model")
-    
-    # Output in Markdown format for GitHub Issue
-    print("## Model Comparison Report")
-    print(f"**Prompt**: `{prompt}`\n")
-    
-    print("| Model | Response |")
-    print("| :--- | :--- |")
-    # Escape newlines for table format or use blockquote
-    # For better readability in Issue, let's use details/summary instead of a huge table
-    
-    print(f"### 🔹 Base Model ({BASE_MODEL_ID})")
-    print(base_res)
-    print("\n---\n")
-    
-    print(f"### 🔸 Tuned Model (Fine-Tuned)")
-    print(tuned_res)
+    if args.mode in ["tuned", "simultaneous"]:
+        tuned_url = f"https://{REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/{VERTEX_ENDPOINT_ID}"
+        tuned_res = call_api(tuned_url, prompt, "Tuned Model")
+        
+        print(f"### 🔸 Tuned Model (Fine-Tuned)")
+        print(tuned_res)
 
 if __name__ == "__main__":
     main()

@@ -37,7 +37,7 @@ jobs:
             PROMPT="$MANUAL_PROMPT"
           else
             # Use script to parse prompt from issue body (passed via ISSUE_BODY env var)
-            PROMPT=$(python3 ci_compare_models.py --mode parse)
+            PROMPT=$(python3 ci_scripts/compare_models.py --mode parse)
           fi
           
           # Multiline output support for GITHUB_OUTPUT
@@ -66,7 +66,7 @@ jobs:
           # Pass prompt via environment variable/file to avoid shell escaping issues with complex Japanese
           # But for simplicity in this script, we pass as arg. Python handles quotes well.
           PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
-          python3 ci_compare_models.py "$PROMPT" --mode base > base_result.md
+          python3 ci_scripts/compare_models.py "$PROMPT" --mode base > base_result.md
 
       - name: Post Base Result
         if: github.event_name == 'issues'
@@ -86,7 +86,7 @@ jobs:
           VERTEX_ENDPOINT_ID: ${{ secrets.VERTEX_ENDPOINT_ID }}
         run: |
           PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
-          python3 ci_compare_models.py "$PROMPT" --mode tuned > tuned_result.md
+          python3 ci_scripts/compare_models.py "$PROMPT" --mode tuned > tuned_result.md
 
       - name: Post Tuned Result
         if: github.event_name == 'issues'

@@ -56,10 +56,6 @@ def parse_arguments():
     return parser.parse_args()
 
 def main():
-    if not VERTEX_API_KEY:
-        print("Error: VERTEX_API_KEY environment variable not set.")
-        sys.exit(1)
-
     args = parse_arguments()
 
     # --- Mode: Parse Prompt from Issue Body ---
@@ -89,6 +85,10 @@ def main():
         return
 
     # --- Standard Execution ---
+    if not VERTEX_API_KEY:
+        print("Error: VERTEX_API_KEY environment variable not set.")
+        sys.exit(1)
+
     prompt = args.prompt
     if not prompt:
         print("Error: prompt argument is required for model execution modes.")

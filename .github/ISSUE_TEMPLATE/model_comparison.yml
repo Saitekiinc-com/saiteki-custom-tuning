@@ -1,6 +1,6 @@
-name: ⚖️ Model Comparison
-description: Compare the Base Model and Tuned Model with a specific prompt.
-title: "⚖️ Comparison: "
+name: ✅ AIモデル回答品質チェック
+description: ベースモデルとファインチューニング済みモデルの回答品質を比較・確認します。
+title: "✅ 品質チェック: "
 labels: ["model-comparison"]
 body:
   - type: textarea

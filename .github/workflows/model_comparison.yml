@@ -1,0 +1,42 @@
+name: Compare Models
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Comparison Prompt'
+        required: true
+        default: '部下から「モチベーションが上がらない」と相談されました。どう対応しますか？'
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Run Comparison
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
+          VERTEX_ENDPOINT_ID: ${{ secrets.VERTEX_ENDPOINT_ID }}
+        run: |
+          python3 ci_compare_models.py "${{ inputs.prompt }}" > result.md
+          cat result.md
+
+      - name: Post to GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PROMPT="${{ inputs.prompt }}"
+          gh issue create \
+            --title "⚖️ Model Comparison: ${PROMPT:0:20}..." \
+            --body-file result.md

@@ -7,12 +7,12 @@ on:
         required: true
         default: '試験運用: 動作チェック'
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 jobs:
   compare:
-    # Run if manual dispatch OR label exists OR title starts with specific prefix
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'model-comparison') || startsWith(github.event.issue.title, '✅ 品質チェック')
+    # Run if manual dispatch OR label exists (Strict label check)
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'model-comparison')
     runs-on: ubuntu-latest
     permissions:
       issues: write

@@ -30,14 +30,14 @@ jobs:
       - name: Extract Prompt
         id: extract_prompt
         env:
-          BODY: ${{ github.event.issue.body }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
           MANUAL_PROMPT: ${{ inputs.prompt }}
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             PROMPT="$MANUAL_PROMPT"
           else
-            # Use script to parse prompt from issue body
-            PROMPT=$(python3 ci_compare_models.py --mode parse --body "$BODY")
+            # Use script to parse prompt from issue body (passed via ISSUE_BODY env var)
+            PROMPT=$(python3 ci_compare_models.py --mode parse)
           fi
           
           # Multiline output support for GITHUB_OUTPUT

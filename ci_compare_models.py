@@ -64,8 +64,9 @@ def main():
 
     # --- Mode: Parse Prompt from Issue Body ---
     if args.mode == "parse":
-        if not args.body:
-             print("Error: --body is required for parse mode.")
+        content = args.body or os.environ.get("ISSUE_BODY")
+        if not content:
+             print("Error: Body content is required (via --body or ISSUE_BODY env var).")
              sys.exit(1)
         
         # Simple parsing for Issue Form (assuming formatting or direct text)
@@ -78,7 +79,7 @@ def main():
         #
         # <user input>
         
-        content = args.body
+        # content is already set above
         match = re.search(r"### Prompt\s*\n\s*(.*)", content, re.DOTALL)
         if match:
             print(match.group(1).strip())

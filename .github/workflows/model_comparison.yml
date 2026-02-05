@@ -7,12 +7,12 @@ on:
         required: true
         default: '試験運用: 動作チェック'
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 
 jobs:
   compare:
-    # Run if manual dispatch OR label exists (Strict label check)
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'model-comparison')
+    # Run if manual dispatch OR specific label is added
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'model-comparison')
     runs-on: ubuntu-latest
     permissions:
       issues: write

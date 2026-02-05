@@ -28,8 +28,6 @@ def call_api(model_resource_url, prompt, label):
     full_text = ""
     try:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    try:
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         with urllib.request.urlopen(req) as response:
             full_resp = response.read().decode("utf-8")
             try:

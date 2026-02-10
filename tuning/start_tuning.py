@@ -64,8 +64,9 @@ def tune_vertex():
             print(resp_body)
             
             resp_json = json.loads(resp_body)
-            job_name = resp_json.get("name", "Unknown")
-            print(f"\nTrack status with URL: https://console.cloud.google.com/vertex-ai/locations/{REGION}/training/tuning-jobs/{job_name.split('/')[-1]}?project={PROJECT_ID}")
+            job_id = job_name.split('/')[-1]
+            print(f"\nTrack status with URL: https://console.cloud.google.com/vertex-ai/training/tuning-jobs?project={PROJECT_ID}")
+            print(f"(Job ID is: {job_id})")
 
     except urllib.error.HTTPError as e:
         print(f"HTTP Error: {e.code} {e.reason}")

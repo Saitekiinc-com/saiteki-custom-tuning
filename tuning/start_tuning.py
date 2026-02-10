@@ -13,7 +13,7 @@ try:
     print("Fetching access token via gcloud...")
     # Using relative path to the installed gcloud (one level up)
     ACCESS_TOKEN = subprocess.check_output(
-        ["../google-cloud-sdk/bin/gcloud", "auth", "print-access-token"],  
+        ["google-cloud-sdk/bin/gcloud", "auth", "print-access-token"],  
         text=True
     ).strip()
 except Exception as e:
@@ -43,7 +43,7 @@ def tune_vertex():
                 "learningRateMultiplier": 1.0
             }
         },
-        "baseModel": "gemini-3.0-flash-001" 
+        "baseModel": "gemini-2.5-flash" 
     }
     
     headers = {
@@ -65,7 +65,7 @@ def tune_vertex():
             
             resp_json = json.loads(resp_body)
             job_name = resp_json.get("name", "Unknown")
-            print(f"\nTrack status with URL: https://{REGION}-aiplatform.googleapis.com/v1/{job_name}?key={API_KEY}")
+            print(f"\nTrack status with URL: https://console.cloud.google.com/vertex-ai/locations/{REGION}/training/tuning-jobs/{job_name.split('/')[-1]}?project={PROJECT_ID}")
 
     except urllib.error.HTTPError as e:
         print(f"HTTP Error: {e.code} {e.reason}")

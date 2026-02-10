@@ -15,7 +15,7 @@
 
 ---
 
-## 使い方 (Workflow)
+## 使い方
 
 ### 1. 学習データの準備
 `tuning/data/source.jsonl` (元データ) を配置し、変換スクリプトを実行して Vertex AI 用の形式 (`training.jsonl`) を生成します。

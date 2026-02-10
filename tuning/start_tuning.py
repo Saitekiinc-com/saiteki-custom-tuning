@@ -43,7 +43,7 @@ def tune_vertex():
                 "learningRateMultiplier": 1.0
             }
         },
-        "baseModel": "gemini-2.0-flash-001" 
+        "baseModel": "gemini-3.0-flash-001" 
     }
     
     headers = {

@@ -12,8 +12,11 @@ PROJECT_ID = "gen-lang-client-0646195883"
 try:
     print("Fetching access token via gcloud...")
     # Using relative path to the installed gcloud (one level up)
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+    GCLOUD_PATH = os.path.join(PROJECT_ROOT, "google-cloud-sdk", "bin", "gcloud")
     ACCESS_TOKEN = subprocess.check_output(
-        ["google-cloud-sdk/bin/gcloud", "auth", "print-access-token"],  
+        [GCLOUD_PATH, "auth", "print-access-token"],  
         text=True
     ).strip()
 except Exception as e:
@@ -34,7 +37,7 @@ def tune_vertex():
     url = f"https://{REGION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/tuningJobs"
     
     payload = {
-        "tunedModelDisplayName": "saiteki-fine-tuning-01",
+        "tunedModelDisplayName": "saiteki-fine-tuning-02",
         "supervisedTuningSpec": {
             "trainingDatasetUri": TRAINING_DATA_URI,
             "validationDatasetUri": None,
@@ -64,6 +67,7 @@ def tune_vertex():
             print(resp_body)
             
             resp_json = json.loads(resp_body)
+            job_name = resp_json.get("name", "")
             job_id = job_name.split('/')[-1]
             print(f"\nTrack status with URL: https://console.cloud.google.com/vertex-ai/training/tuning-jobs?project={PROJECT_ID}")
             print(f"(Job ID is: {job_id})")

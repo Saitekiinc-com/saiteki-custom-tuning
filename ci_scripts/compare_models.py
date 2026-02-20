@@ -19,17 +19,20 @@ def call_api(model_resource_url, prompt, label):
     
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 800, "temperature": 0.7}
+        "generationConfig": {"maxOutputTokens": 8192, "temperature": 0.7}
     }
     
     headers = {"Content-Type": "application/json"}
     data = json.dumps(payload).encode("utf-8")
+    
+    print(f"DEBUG [{label}]: Sending Payload: {json.dumps(payload, ensure_ascii=False)}")
     
     full_text = ""
     try:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         with urllib.request.urlopen(req) as response:
             full_resp = response.read().decode("utf-8")
+            print(f"DEBUG [{label}]: Received Response: {full_resp}")
             try:
                 resp_list = json.loads(full_resp)
                 for item in resp_list:

@@ -48,15 +48,85 @@ def call_api(model_resource_url, prompt, label):
 import argparse
 import re
 
+# --- 定量評価ロジック ---
+
+def evaluate_response(text):
+    """テキストから定量指標を計算して返す"""
+    char_count = len(text)
+    paragraphs = [p for p in text.split("\n") if p.strip()]
+    paragraph_count = len(paragraphs)
+    effective_char_count = len(text.replace(" ", "").replace("　", "").replace("\n", "").replace("\r", ""))
+    return {
+        "char_count": char_count,
+        "paragraph_count": paragraph_count,
+        "effective_char_count": effective_char_count,
+    }
+
+def format_score_report(base_score, tuned_score):
+    """両スコアを比較してMarkdown形式の評価サマリーを返す"""
+    rows = [
+        ("文字数", base_score["char_count"], tuned_score["char_count"]),
+        ("段落数", base_score["paragraph_count"], tuned_score["paragraph_count"]),
+        ("実質文字数", base_score["effective_char_count"], tuned_score["effective_char_count"]),
+    ]
+
+    table_lines = [
+        "| 指標 | 🔹 ベースモデル | 🔸 チューニング済み | 差分 |",
+        "|---|---|---|---|",
+    ]
+    win_count = 0
+    for label, base_val, tuned_val in rows:
+        diff = tuned_val - base_val
+        sign = "+" if diff >= 0 else ""
+        mark = "✅" if diff > 0 else ("➖" if diff == 0 else "⚠️")
+        if diff > 0:
+            win_count += 1
+        table_lines.append(f"| {label} | {base_val} | {tuned_val} | {sign}{diff} {mark} |")
+
+    if win_count == len(rows):
+        verdict = "**判定:** チューニング済みモデルの回答がすべての指標で上回っています。"
+    elif win_count > 0:
+        verdict = f"**判定:** チューニング済みモデルが {win_count}/{len(rows)} 指標で上回っています。"
+    else:
+        verdict = "**判定:** ベースモデルと同等かそれ以上の結果です。チューニングデータの見直しを検討してください。"
+
+    report = "## 📊 定量評価サマリー\n\n"
+    report += "\n".join(table_lines)
+    report += f"\n\n{verdict}\n"
+    return report
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run specific model comparison tasks.")
     parser.add_argument("prompt", nargs="?", help="The prompt to send to the models.")
-    parser.add_argument("--mode", choices=["parse", "base", "tuned", "simultaneous"], default="simultaneous", help="Execution mode.")
+    parser.add_argument("--mode", choices=["parse", "base", "tuned", "simultaneous", "evaluate"], default="simultaneous", help="Execution mode.")
     parser.add_argument("--body", help="Issue body content for parsing prompt.")
+    parser.add_argument("--base-file", help="Base model result file path (for evaluate mode).")
+    parser.add_argument("--tuned-file", help="Tuned model result file path (for evaluate mode).")
+    parser.add_argument("--output", default="score_result.md", help="Output file path for evaluate mode.")
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
+
+    # --- Mode: Evaluate (定量評価のみ) ---
+    if args.mode == "evaluate":
+        base_file = args.base_file
+        tuned_file = args.tuned_file
+        if not base_file or not tuned_file:
+            print("Error: --base-file と --tuned-file が必要です。")
+            sys.exit(1)
+        with open(base_file, "r", encoding="utf-8") as f:
+            base_text = f.read()
+        with open(tuned_file, "r", encoding="utf-8") as f:
+            tuned_text = f.read()
+        base_score = evaluate_response(base_text)
+        tuned_score = evaluate_response(tuned_text)
+        report = format_score_report(base_score, tuned_score)
+        output_path = args.output
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(report)
+        print(report)
+        return
 
     # --- Mode: Parse Prompt from Issue Body ---
     if args.mode == "parse":

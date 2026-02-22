@@ -96,17 +96,36 @@ jobs:
         run: |
           gh issue comment "$ISSUE_URL" --body-file tuned_result.md
 
+      # 3. Quantitative Evaluation
+      - name: Run Quantitative Evaluation
+        run: |
+          python3 ci_scripts/compare_models.py \
+            --mode evaluate \
+            --base-file base_result.md \
+            --tuned-file tuned_result.md \
+            --output score_result.md
+
+      - name: Post Score Summary (Issue Triggered)
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body-file score_result.md
+
       # Fallback for manual dispatch (Original behavior: post new issue)
       - name: Post to New Issue (Manual Dispatch Only)
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Combine results
+          # 全結果を結合
           cat base_result.md > full_result.md
           echo -e "\n---\n" >> full_result.md
           cat tuned_result.md >> full_result.md
-          
+          echo -e "\n---\n" >> full_result.md
+          cat score_result.md >> full_result.md
+
           PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
           gh issue create \
             --title "⚖️ Model Comparison: ${PROMPT:0:20}..." \

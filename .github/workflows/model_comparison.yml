@@ -113,6 +113,29 @@ jobs:
         run: |
           gh issue comment "$ISSUE_URL" --body-file score_result.md
 
+      # 4. LLM-as-Judge
+      - name: Run LLM Judge
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
+        run: |
+          PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
+          python3 ci_scripts/compare_models.py \
+            --mode judge \
+            --base-file base_result.md \
+            --tuned-file tuned_result.md \
+            --prompt-text "$PROMPT" \
+            --output judge_result.md
+
+      - name: Post Judge Result (Issue Triggered)
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body-file judge_result.md
+
       # Fallback for manual dispatch (Original behavior: post new issue)
       - name: Post to New Issue (Manual Dispatch Only)
         if: github.event_name == 'workflow_dispatch'
@@ -125,6 +148,8 @@ jobs:
           cat tuned_result.md >> full_result.md
           echo -e "\n---\n" >> full_result.md
           cat score_result.md >> full_result.md
+          echo -e "\n---\n" >> full_result.md
+          cat judge_result.md >> full_result.md
 
           PROMPT="${{ steps.extract_prompt.outputs.PROMPT }}"
           gh issue create \

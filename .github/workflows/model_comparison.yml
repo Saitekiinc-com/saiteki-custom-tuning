@@ -46,6 +46,18 @@ jobs:
           echo "$PROMPT" >> $GITHUB_OUTPUT
           echo "$delimiter" >> $GITHUB_OUTPUT
 
+      - name: Extract Reference Answer
+        id: extract_reference
+        if: github.event_name == 'issues'
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          REFERENCE=$(python3 ci_scripts/compare_models.py --mode parse-reference)
+          delimiter="EOF"
+          echo "REFERENCE<<$delimiter" >> $GITHUB_OUTPUT
+          echo "$REFERENCE" >> $GITHUB_OUTPUT
+          echo "$delimiter" >> $GITHUB_OUTPUT
+
       - name: Ack Issue (If Issue Triggered)
         if: github.event_name == 'issues'
         env:
@@ -135,6 +147,32 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
           gh issue comment "$ISSUE_URL" --body-file judge_result.md
+
+      # 5. Similarity Evaluation (参照回答がある場合のみ)
+      - name: Run Similarity Evaluation
+        id: similarity
+        if: github.event_name == 'issues' && steps.extract_reference.outputs.REFERENCE != ''
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
+          REFERENCE: ${{ steps.extract_reference.outputs.REFERENCE }}
+        run: |
+          printf '%s' "$REFERENCE" > reference.txt
+          python3 ci_scripts/compare_models.py \
+            --mode similarity \
+            --base-file base_result.md \
+            --tuned-file tuned_result.md \
+            --reference-text "$(cat reference.txt)" \
+            --output similarity_result.md
+
+      - name: Post Similarity Result
+        if: github.event_name == 'issues' && steps.extract_reference.outputs.REFERENCE != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue comment "$ISSUE_URL" --body-file similarity_result.md
 
       # Fallback for manual dispatch (Original behavior: post new issue)
       - name: Post to New Issue (Manual Dispatch Only)

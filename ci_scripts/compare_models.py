@@ -205,15 +205,74 @@ def format_judge_report(base_judgment, tuned_judgment, base_error, tuned_error):
 
     return report
 
+# --- 意味的類似度 (埋め込みベクトル) ロジック ---
+
+EMBEDDING_MODEL_ID = "text-multilingual-embedding-002"
+
+def get_embedding(text):
+    """テキストをVertex AI埋め込みモデルでベクトル化して返す"""
+    if not VERTEX_API_KEY or not PROJECT_ID:
+        raise RuntimeError("VERTEX_API_KEY または GCP_PROJECT_ID が未設定です。")
+
+    url = (
+        f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}"
+        f"/locations/{REGION}/publishers/google/models/{EMBEDDING_MODEL_ID}:predict"
+        f"?key={VERTEX_API_KEY}"
+    )
+    payload = {"instances": [{"content": text[:3000]}]}  # API上限対応
+    headers = {"Content-Type": "application/json"}
+    data = json.dumps(payload).encode("utf-8")
+
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    return result["predictions"][0]["embeddings"]["values"]
+
+def cosine_similarity(vec1, vec2):
+    """コサイン類似度を計算して返す (0、1の範囲)"""
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = sum(a * a for a in vec1) ** 0.5
+    norm2 = sum(b * b for b in vec2) ** 0.5
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot / (norm1 * norm2)
+
+def format_similarity_report(base_sim, tuned_sim):
+    """類似度スコアを比較してMarkdown形式のレポートを返す"""
+    diff = tuned_sim - base_sim
+    sign = "+" if diff >= 0 else ""
+    mark = "✅" if diff > 0 else ("➖" if diff == 0 else "⚠️")
+
+    table_lines = [
+        "| モデル | 類似度スコア |",
+        "|---|---|",
+        f"| 🔹 ベースモデル | {base_sim:.4f} |",
+        f"| 🔸 チューニング済み | {tuned_sim:.4f} |",
+        f"| **差分** | **{sign}{diff:.4f} {mark}** |",
+    ]
+
+    if diff > 0:
+        verdict = "チューニング済みモデルの回答が参照回答により近い意味を持っています。"
+    elif diff == 0:
+        verdict = "両モデルの類似度は同等です。"
+    else:
+        verdict = "ベースモデルの回答が参照回答により近い意味を持っています。チューニングデータの見直しを検討してください。"
+
+    report = "## 🔍 意味的類似度評価 (BERTScore-like)\n\n"
+    report += "参照回答との意味的な近さを Vertex AI 埋め込みモデルで計測しました。\n\n"
+    report += "\n".join(table_lines)
+    report += f"\n\n**判定:** {verdict}\n"
+    return report
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run specific model comparison tasks.")
     parser.add_argument("prompt", nargs="?", help="The prompt to send to the models.")
-    parser.add_argument("--mode", choices=["parse", "base", "tuned", "simultaneous", "evaluate", "judge"], default="simultaneous", help="Execution mode.")
+    parser.add_argument("--mode", choices=["parse", "parse-reference", "base", "tuned", "simultaneous", "evaluate", "judge", "similarity"], default="simultaneous", help="Execution mode.")
     parser.add_argument("--body", help="Issue body content for parsing prompt.")
-    parser.add_argument("--base-file", help="Base model result file path (for evaluate/judge mode).")
-    parser.add_argument("--tuned-file", help="Tuned model result file path (for evaluate/judge mode).")
+    parser.add_argument("--base-file", help="Base model result file path (for evaluate/judge/similarity mode).")
+    parser.add_argument("--tuned-file", help="Tuned model result file path (for evaluate/judge/similarity mode).")
     parser.add_argument("--prompt-text", help="Original prompt text (for judge mode).")
-    parser.add_argument("--output", default="score_result.md", help="Output file path for evaluate/judge mode.")
+    parser.add_argument("--reference-text", help="Reference answer text (for similarity mode).")
+    parser.add_argument("--output", default="score_result.md", help="Output file path for evaluate/judge/similarity mode.")
     return parser.parse_args()
 
 def main():
@@ -233,6 +292,34 @@ def main():
         base_score = evaluate_response(base_text)
         tuned_score = evaluate_response(tuned_text)
         report = format_score_report(base_score, tuned_score)
+        output_path = args.output
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(report)
+        print(report)
+        return
+
+    # --- Mode: Similarity (意味的類似度) ---
+    if args.mode == "similarity":
+        base_file = args.base_file
+        tuned_file = args.tuned_file
+        reference_text = args.reference_text
+        if not base_file or not tuned_file or not reference_text:
+            print("Error: --base-file、--tuned-file、--reference-text が必要です。")
+            sys.exit(1)
+        if not VERTEX_API_KEY or not PROJECT_ID:
+            print("Error: VERTEX_API_KEY または GCP_PROJECT_ID が未設定です。")
+            sys.exit(1)
+        with open(base_file, "r", encoding="utf-8") as f:
+            base_text = f.read()
+        with open(tuned_file, "r", encoding="utf-8") as f:
+            tuned_text = f.read()
+        print("🔍 埋め込みベクトルを取得中...")
+        ref_vec = get_embedding(reference_text)
+        base_vec = get_embedding(base_text)
+        tuned_vec = get_embedding(tuned_text)
+        base_sim = cosine_similarity(ref_vec, base_vec)
+        tuned_sim = cosine_similarity(ref_vec, tuned_vec)
+        report = format_similarity_report(base_sim, tuned_sim)
         output_path = args.output
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(report)
@@ -268,24 +355,23 @@ def main():
         if not content:
              print("Error: Body content is required (via --body or ISSUE_BODY env var).")
              sys.exit(1)
-        
-        # Simple parsing for Issue Form (assuming formatting or direct text)
-        # Issue Forms usually return key-value pairs or just sections.
-        # We'll just take the body as is if it's simple, or try to find the prompt section.
-        # For simplicity in this v1, assuming the user writes the prompt or the template logic works.
-        # Actually, GitHub Issue Forms (yaml) put the content in the body.
-        # If using the YAML template provided, the body will contain:
-        # ### Prompt
-        #
-        # <user input>
-        
-        # content is already set above
         match = re.search(r"### Prompt\s*\n\s*(.*)", content, re.DOTALL)
         if match:
             print(match.group(1).strip())
         else:
-            # Fallback: just return the whole body if pattern not found
             print(content.strip())
+        return
+
+    # --- Mode: Parse Reference Answer from Issue Body ---
+    if args.mode == "parse-reference":
+        content = args.body or os.environ.get("ISSUE_BODY", "")
+        match = re.search(r"### 参照回答\s*\n\s*(.*)", content, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+            # 次のセクション (### で始まる行) があれば手前で切る
+            text = re.split(r"^###", text, maxsplit=1, flags=re.MULTILINE)[0].strip()
+            print(text)
+        # 参照回答がない場合は何も返さない (スキップのトリガーになる)
         return
 
     # --- Standard Execution ---

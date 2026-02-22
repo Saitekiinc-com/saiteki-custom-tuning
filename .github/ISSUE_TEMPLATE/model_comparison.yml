@@ -11,3 +11,12 @@ body:
       placeholder: Enter your prompt here...
     validations:
       required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: 参照回答
+      description: 意味的類似度の算出に使用します。入力しない場合はスキップされます。
+      placeholder: 理想的な回答例を入力してください（任意）
+    validations:
+      required: false
+

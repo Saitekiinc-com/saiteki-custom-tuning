@@ -56,32 +56,44 @@ def evaluate_response(text):
     paragraphs = [p for p in text.split("\n") if p.strip()]
     paragraph_count = len(paragraphs)
     effective_char_count = len(text.replace(" ", "").replace("　", "").replace("\n", "").replace("\r", ""))
+    # リスト項目数 (「-」「・」「*」「○」「•」で始まる行)
+    list_items = len([p for p in text.split("\n") if re.match(r"^\s*[-・*○•・・]|^\s*\d+[.)）]", p)])
+    # 文字数 / 段落数 = 平均段落文字数
+    avg_para_length = round(effective_char_count / paragraph_count) if paragraph_count > 0 else 0
+    # 疑問文数 (「？」「？」で終わる行)
+    question_count = len([p for p in text.split("\n") if p.strip().endswith(("？", "?"))])
     return {
         "char_count": char_count,
         "paragraph_count": paragraph_count,
         "effective_char_count": effective_char_count,
+        "list_items": list_items,
+        "avg_para_length": avg_para_length,
+        "question_count": question_count,
     }
 
 def format_score_report(base_score, tuned_score):
     """両スコアを比較してMarkdown形式の評価サマリーを返す"""
     rows = [
-        ("文字数", base_score["char_count"], tuned_score["char_count"]),
-        ("段落数", base_score["paragraph_count"], tuned_score["paragraph_count"]),
-        ("実質文字数", base_score["effective_char_count"], tuned_score["effective_char_count"]),
+        ("文字数", base_score["char_count"], tuned_score["char_count"], "回答の総分量。多いほど詳細な回答"),
+        ("実質文字数", base_score["effective_char_count"], tuned_score["effective_char_count"], "空白・改行除く内容密度"),
+        ("段落数", base_score["paragraph_count"], tuned_score["paragraph_count"], "回答の構造化度合い"),
+        ("リスト項目数", base_score["list_items"], tuned_score["list_items"], "箇条書き等の具体的な列挙"),
+        ("平均段落文字数", base_score["avg_para_length"], tuned_score["avg_para_length"], "各段落の情報密度（高すぎると読みにくい）"),
+        ("疑問文数", base_score["question_count"], tuned_score["question_count"], "相談者への考察促進の指標"),
     ]
 
     table_lines = [
-        "| 指標 | 🔹 ベースモデル | 🔸 チューニング済み | 差分 |",
-        "|---|---|---|---|",
+        "| 指標 | 🔹 ベースモデル | 🔸 チューニング済み | 差分 | 計測内容 |",
+        "|---|---|---|---|---|",
     ]
     win_count = 0
-    for label, base_val, tuned_val in rows:
+    for label, base_val, tuned_val, desc in rows:
         diff = tuned_val - base_val
         sign = "+" if diff >= 0 else ""
         mark = "✅" if diff > 0 else ("➖" if diff == 0 else "⚠️")
         if diff > 0:
             win_count += 1
-        table_lines.append(f"| {label} | {base_val} | {tuned_val} | {sign}{diff} {mark} |")
+        table_lines.append(f"| {label} | {base_val} | {tuned_val} | {sign}{diff} {mark} | {desc} |")
 
     if win_count == len(rows):
         verdict = "**判定:** チューニング済みモデルの回答がすべての指標で上回っています。"
@@ -136,7 +148,7 @@ def call_judge(response_text, original_prompt):
     url = f"{base_url}:streamGenerateContent?key={VERTEX_API_KEY}"
     payload = {
         "contents": [{"role": "user", "parts": [{"text": judge_prompt}]}],
-        "generationConfig": {"maxOutputTokens": 512, "temperature": 0.1},
+        "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.1},
     }
     headers = {"Content-Type": "application/json"}
     data = json.dumps(payload).encode("utf-8")
@@ -153,15 +165,22 @@ def call_judge(response_text, original_prompt):
     except Exception as e:
         return None, str(e)
 
-    # JSONを抽出
-    match = re.search(r"\{.*\}", full_text, re.DOTALL)
-    if not match:
-        return None, f"JSONが取得できませんでした: {full_text[:200]}"
+    # コードブロック (```json ... ```) に包まれている場合に対応
+    code_block_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", full_text)
+    if code_block_match:
+        json_str = code_block_match.group(1).strip()
+    else:
+        # 裸のJSONを抽出
+        raw_match = re.search(r"\{[\s\S]*\}", full_text)
+        json_str = raw_match.group() if raw_match else None
+
+    if not json_str:
+        return None, f"JSONが取得できませんでした: {full_text[:300]}"
     try:
-        result = json.loads(match.group())
+        result = json.loads(json_str)
         return result, None
     except json.JSONDecodeError as e:
-        return None, f"JSONパースエラー: {e} / raw: {match.group()[:200]}"
+        return None, f"JSONパースエラー: {e} / raw: {json_str[:300]}"
 
 def format_judge_report(base_judgment, tuned_judgment, base_error, tuned_error):
     """審判スコアを比較してMarkdown形式のレポートを返す"""
@@ -259,7 +278,11 @@ def format_similarity_report(base_sim, tuned_sim):
         verdict = "ベースモデルの回答が参照回答により近い意味を持っています。チューニングデータの見直しを検討してください。"
 
     report = "## 🔍 意味的類似度評価 (BERTScore-like)\n\n"
-    report += "参照回答との意味的な近さを Vertex AI 埋め込みモデルで計測しました。\n\n"
+    report += "> **このスコアについて**\n"
+    report += "> \u300c`text-multilingual-embedding-002`\u300dで各回答をベクトル化し、参照回答とのコサイン類似度を計算しています。\n"
+    report += "> - スコアは **0～1** の範囲で、**1.0 に近いほど参照回答と意味的に近い**\n"
+    report += "> - **参照回答が短い場合**は全体スコアが下がる傾向があります（山山と寮を比べるような状態）\n"
+    report += "> - 差分がマイナスの場合、チューニングで回答が大幅に長くなり参照回答のキーワードが「簿化」した可能性があります\n\n"
     report += "\n".join(table_lines)
     report += f"\n\n**判定:** {verdict}\n"
     return report

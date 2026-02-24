@@ -121,14 +121,17 @@ JUDGE_PROMPT_TEMPLATE = """\
 ## 評価対象の回答
 {response_text}
 
-## 評価基準 (各軸 1〜5 点)
+## 評価基準 (各軸 1〜10 点 / 5点が「一般的なマネージャーの標準」)
 - 実用性: 具体的なアクションや手順が含まれているか
+  - 1〜4: 抽象的で実行できない / 5: 標準的な対応 / 6〜10: 即実践できる具体策がある
 - 共感性: 相談者の感情を受け止め、心理的安全性を確保しているか
+  - 1〜4: 感情への言及なし / 5: 一応受け止めている / 6〜10: 深く寄り添い信頼を高める
 - 専門性: マネジメント理論や業界知識が反映されているか
+  - 1〜4: 一般論のみ / 5: 標準的なマネジメント知識 / 6〜10: 具体的なフレームワークや根拠がある
 
 ## 出力形式
 以下のJSONのみを返してください。他のテキストは一切含めないでください。
-{{"実用性": <1-5>, "共感性": <1-5>, "専門性": <1-5>, "コメント": "<50字以内の総評>"}}
+{{"実用性": <1-10>, "共感性": <1-10>, "専門性": <1-10>, "コメント": "<50字以内の総評>"}}
 """
 
 def call_judge(response_text, original_prompt):
@@ -190,16 +193,26 @@ def format_judge_report(base_judgment, tuned_judgment, base_error, tuned_error):
         if error or judgment is None:
             return f"> 評価の取得に失敗しました: {error}\n"
         lines = [
-            "| 軸 | スコア |",
-            "|---|---|",
+            "| 軸 | スコア | 基準 |",
+            "|---|---|---|",
         ]
         total = 0
         for key in JUDGE_CRITERIA:
             score = judgment.get(key, "-")
-            if isinstance(score, int):
+            if isinstance(score, (int, float)):
                 total += score
-            lines.append(f"| {key} | {score}/5 |")
-        lines.append(f"| **合計** | **{total}/15** |")
+                if score >= 8:
+                    level = "S級"
+                elif score >= 6:
+                    level = "標準以上"
+                elif score == 5:
+                    level = "標準"
+                else:
+                    level = "要改善"
+            else:
+                level = "-"
+            lines.append(f"| {key} | {score}/10 | {level} |")
+        lines.append(f"| **合計** | **{total}/30** | |")  
         comment = judgment.get("コメント", "")
         return "\n".join(lines) + (f"\n\n> {comment}" if comment else "")
 

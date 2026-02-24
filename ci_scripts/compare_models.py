@@ -9,7 +9,7 @@ PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 REGION = os.environ.get("GCP_REGION", "us-central1")
 VERTEX_API_KEY = os.environ.get("VERTEX_API_KEY")
 VERTEX_ENDPOINT_ID = os.environ.get("VERTEX_ENDPOINT_ID")
-BASE_MODEL_ID = "gemini-2.0-flash-001"
+BASE_MODEL_ID = "gemini-2.5-flash"
 
 # Default Prompt if not provided via args
 DEFAULT_PROMPT = "部下から『モチベーションが上がらない』と相談されました。どう対応しますか？"

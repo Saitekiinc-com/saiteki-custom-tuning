@@ -15,8 +15,11 @@ body:
     id: reference
     attributes:
       label: 参照回答
-      description: 意味的類似度の算出に使用します。入力しない場合はスキップされます。
-      placeholder: 理想的な回答例を入力してください（任意）
+      description: |
+        Saitekiが考える「S級人材」としての理想的な回答を入力してください。
+        概要レベルで構いません。意味的類似度の算出基準として使用されます。
+      placeholder: |
+        例: まず相手の話をしっかり聞き、感情を受け止める。その後、モチベーションが下がっている背景にある要因を一緒に探る。単に励ますのではなく、業務の意義や期待を具体的に伝え、短期的な目標設定と支援策を提示する。
     validations:
-      required: false
+      required: true
 
